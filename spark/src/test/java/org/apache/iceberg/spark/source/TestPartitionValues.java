@@ -132,7 +132,7 @@ public class TestPartitionValues {
 
     try {
       // TODO: incoming columns must be ordered according to the table's schema
-      df.select("id", "data").write()
+      df.select("data", "id").write()
           .format("iceberg")
           .mode("append")
           .save(location.toString());
