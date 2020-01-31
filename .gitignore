@@ -5,15 +5,15 @@
 *.iml
 
 # gradle build
-.gradle
 build
-gradle/
 out
 gradle/wrapper/gradle-wrapper.jar
 
 # web site build
 site/site
 
+
+.gradle
 __pycache__/
 *.py[cod]
 .eggs/

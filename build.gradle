@@ -25,8 +25,32 @@ buildscript {
     gradlePluginPortal()
     maven { url "http://palantir.bintray.com/releases" }
     maven { url "https://plugins.gradle.org/m2/" }
+    maven {
+      url "https://box.jfrog.io/box/box-maven-snapshots"
+      credentials {
+        username "${artifactory_user}"
+        password "${artifactory_password}"
+      }
+    }
+    maven {
+      url "https://box.jfrog.io/box/box-maven-releases"
+      credentials {
+        username "${artifactory_user}"
+        password "${artifactory_password}"
+      }
+    }
+    maven {
+      url "https://box.jfrog.io/box/signedthirdpartymaven"
+      credentials {
+        username "${artifactory_user}"
+        password "${artifactory_password}"
+      }
+    }
   }
   dependencies {
+    classpath group: 'com.box.monaco', name: 'test-coverage', version: '2.0.1'
+    classpath group: 'com.box.monaco', name: 'signature-verification', version: '2.0.21'
+    classpath 'com.github.jengelman.gradle.plugins:shadow:5.0.0'
     classpath 'com.github.jengelman.gradle.plugins:shadow:5.0.0'
     classpath 'com.palantir.baseline:gradle-baseline-java:0.55.0'
     classpath 'com.diffplug.spotless:spotless-plugin-gradle:3.14.0'
@@ -46,7 +70,7 @@ if (JavaVersion.current() != JavaVersion.VERSION_1_8) {
 
 allprojects {
   group = "org.apache.iceberg"
-  version = getProjectVersion()
+  version = rootProject.version
   repositories {
     maven { url  "http://palantir.bintray.com/releases" }
     mavenCentral()
@@ -96,20 +120,23 @@ subprojects {
 }
 
 apply from: 'baseline.gradle'
-apply from: 'deploy.gradle'
 apply from: 'tasks.gradle'
 apply from: 'jmh.gradle'
 
 project(':iceberg-api') {
+  apply from: '../gradle/publishing.gradle'
   dependencies {
     testCompile "org.apache.avro:avro"
     testCompile 'joda-time:joda-time'
   }
 }
 
-project(':iceberg-common') {}
+project(':iceberg-common') {
+  apply from: '../gradle/publishing.gradle'
+}
 
 project(':iceberg-core') {
+  apply from: '../gradle/publishing.gradle'
   dependencies {
     compile project(':iceberg-api')
     compile project(':iceberg-common')
@@ -131,6 +158,7 @@ project(':iceberg-core') {
 }
 
 project(':iceberg-data') {
+  apply from: '../gradle/publishing.gradle'
   dependencies {
     compile project(':iceberg-api')
     compile project(':iceberg-core')
@@ -157,6 +185,7 @@ project(':iceberg-data') {
 }
 
 project(':iceberg-hive') {
+  apply from: '../gradle/publishing.gradle'
   dependencies {
     compile project(':iceberg-core')
 
@@ -220,6 +249,7 @@ project(':iceberg-orc') {
 }
 
 project(':iceberg-parquet') {
+  apply from: '../gradle/publishing.gradle'
   dependencies {
     compile project(':iceberg-api')
     compile project(':iceberg-core')
@@ -241,6 +271,7 @@ project(':iceberg-parquet') {
 }
 
 project(':iceberg-spark') {
+  apply from: '../gradle/publishing.gradle'
   apply plugin: 'scala'
 
   dependencies {
@@ -275,6 +306,7 @@ project(':iceberg-spark') {
 }
 
 project(':iceberg-pig') {
+  apply from: '../gradle/publishing.gradle'
   dependencies {
     compile project(':iceberg-api')
     compile project(':iceberg-common')
@@ -299,13 +331,50 @@ project(':iceberg-pig') {
   }
 }
 
+project(':iceberg-core-shaded') {
+  apply plugin: 'com.github.johnrengelman.shadow'
+  apply from: '../gradle/publishing.gradle'
+  tasks.assemble.dependsOn tasks.shadowJar
+  jar {
+    enabled = false
+    dependsOn(shadowJar { classifier = null })
+  }
+  dependencies {
+    compileOnly project(':iceberg-core')
+  }
+  shadowJar {
+    // shade compileOnly dependencies to avoid including in transitive dependencies
+    configurations = [project.configurations.compileOnly]
+    zip64 true
+    // include the LICENSE and NOTICE files for the shaded Jar
+    from(projectDir) {
+      include 'LICENSE'
+      include 'NOTICE'
+    }
+    // Relocate dependencies to avoid conflicts
+    relocate 'com.google', 'org.apache.iceberg.shaded.com.google'
+    relocate 'com.fasterxml', 'org.apache.iceberg.shaded.com.fasterxml'
+    relocate 'com.github.benmanes', 'org.apache.iceberg.shaded.com.github.benmanes'
+    relocate 'org.checkerframework', 'org.apache.iceberg.shaded.org.checkerframework'
+    relocate 'org.apache.avro', 'org.apache.iceberg.shaded.org.apache.avro'
+    relocate 'avro.shaded', 'org.apache.iceberg.shaded.org.apache.avro.shaded'
+    relocate 'com.thoughtworks.paranamer', 'org.apache.iceberg.shaded.com.thoughtworks.paranamer'
+    relocate 'org.apache.parquet', 'org.apache.iceberg.shaded.org.apache.parquet'
+    relocate 'shaded.parquet', 'org.apache.iceberg.shaded.org.apache.parquet.shaded'
+    // relocate Avro's jackson dependency to share parquet-jackson locations
+    relocate 'org.codehaus.jackson', 'org.apache.iceberg.shaded.org.apache.parquet.shaded.org.codehaus.jackson'
+    relocate 'org.apache.orc', 'org.apache.iceberg.shaded.org.apache.orc'
+    relocate 'io.airlift', 'org.apache.iceberg.shaded.io.airlift'
+    archiveName = "iceberg-core-shaded-${version}.${extension}"
+  }
+}
+
 // the runtime jar is a self-contained artifact for testing in a notebook
 project(':iceberg-spark-runtime') {
+  apply from: '../gradle/publishing.gradle'
   apply plugin: 'com.github.johnrengelman.shadow'
 
   tasks.assemble.dependsOn tasks.shadowJar
-  tasks.install.dependsOn tasks.shadowJar
-  tasks.javadocJar.dependsOn tasks.shadowJar
 
   configurations {
     compileOnly {

@@ -1,0 +1,74 @@
+apply plugin: 'maven-publish'
+
+def boxJfrog(repoName, repositories, folder) {
+    repositories.maven {
+        name repoName
+        url "https://box.jfrog.io/box/" + folder
+
+        credentials {
+            username "${artifactory_user}"
+            password "${artifactory_password}"
+        }
+    }
+}
+
+repositories {
+    mavenCentral()
+    boxJfrog('signedthirdparty', it, 'signedthirdpartymaven')
+    boxJfrog('releaseRepo', it, 'box-maven-releases')
+    boxJfrog('snapshotRepo', it, 'box-maven-snapshots')
+    mavenLocal()
+}
+
+task sourceJar(type: Jar) {
+    from sourceSets.main.allJava
+    classifier "sources"
+}
+
+task javadocJar(type: Jar, dependsOn: javadoc) {
+    classifier = 'javadoc'
+    from javadoc.destinationDir
+    group 'build'
+}
+
+task testJar(type: Jar) {
+    archiveClassifier = 'tests'
+    from sourceSets.test.output
+}
+
+configurations.create('signPublishConfig')
+
+// add artifacts to signPublishConfig
+artifacts {
+    archives sourceJar
+    archives javadocJar
+    archives testJar
+    testArtifacts testJar
+    signPublishConfig project.getTasks().jar
+}
+
+apply plugin: 'monaco-sign-publish-jars'
+apply plugin: 'monaco-signature-verification'
+
+publishing.repositories {
+    // define RELEASE repo. This is what the monaco-sign-publish-jars plugin uses to upload artifacts.
+    // naming the repo as 'release' will create a publishing task publishPluginMavenJavaPublicationToReleaseRepository for the monaco-sign-publish-jars plugin artifacts
+    boxJfrog('release', it, 'box-maven-releases')
+    boxJfrog('snapshot', it, 'box-maven-snapshots')
+}
+
+// This defines 'what' should be uploaded.
+publishing.publications {
+    mavenJava(MavenPublication) {
+        from components.java
+        artifact sourceJar
+        artifact javadocJar
+        artifact testJar
+    }
+}
+
+signatureVerification {
+    username "${artifactory_user}"
+    password "${artifactory_password}"
+    publicKeyPath "keys/jenkins.gpg"
+}
