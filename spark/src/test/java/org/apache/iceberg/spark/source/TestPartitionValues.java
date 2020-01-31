@@ -209,7 +209,6 @@ public class TestPartitionValues {
     HadoopTables tables = new HadoopTables(spark.sessionState().newHadoopConf());
     Table table = tables.create(SIMPLE_SCHEMA, SPEC, location.toString());
     table.updateProperties().set(TableProperties.DEFAULT_FILE_FORMAT, format).commit();
-    table.updateSchema().addColumn("field1", Types.IntegerType.get()).commit();
 
     List<SimpleRecord> expected = Lists.newArrayList(
             new SimpleRecord(1, "a"),
@@ -225,6 +224,8 @@ public class TestPartitionValues {
               .mode("append")
               .option("check-ordering", "false")
               .save(location.toString());
+
+      table.updateSchema().addColumn("field1", Types.IntegerType.get()).commit();
 
       List<SimpleRecord> recordsWithAdditionalColumn = Lists.newArrayList(
               new SimpleRecord(4, "d"),
@@ -243,7 +244,7 @@ public class TestPartitionValues {
       Dataset<Row> result = spark.read()
               .format("iceberg")
               .load(location.toString());
-
+      
       Assert.assertEquals("Result rows should match", result.collectAsList().stream().filter(row -> {
         if(row.isNullAt(2)){
           return false;
